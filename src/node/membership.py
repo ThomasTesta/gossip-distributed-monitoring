@@ -6,18 +6,18 @@ import time
 
 class NodeStatus(str, Enum):
     ALIVE = "ALIVE"
-    SUSPECT = "SUSPECT"
-    DEAD = "DEAD"
+    SUSPECT = "SUSPECT" #3 sec
+    DEAD = "DEAD" #6sec
 
 
 @dataclass
 class MemberInfo:
     node_id: str
-    heartbeat: int
+    heartbeat: int #logical clock
     status: NodeStatus
-    last_update: float
+    last_update: float #timestamp
 
-
+# members: Dict[str, MemberInfo]
 class MembershipTable:
     def __init__(self, self_id: str):
         self.self_id = self_id
@@ -45,10 +45,37 @@ class MembershipTable:
 
     def merge(self, incoming: Dict[str, MemberInfo]):
         """
-        Placeholder merge logic (we improve later).
+        Placeholder merge.
         """
         for node_id, info in incoming.items():
             local = self.members.get(node_id)
 
             if local is None or info.heartbeat > local.heartbeat:
                 self.members[node_id] = info
+
+    # Mark a node as seen (update heartbeat and timestamp)      
+    def mark_seen(self, node_id: str, heartbeat: int = 0):
+        now = time.time()
+        m = self.members.get(node_id)
+
+        if m is None:
+            self.members[node_id] = MemberInfo(
+                node_id=node_id,
+                heartbeat=heartbeat,
+                status=NodeStatus.ALIVE,
+                last_update=now,
+            )
+            return
+
+        m.last_update = now
+        if heartbeat > m.heartbeat:
+            m.heartbeat = heartbeat
+
+        if m.status != NodeStatus.DEAD:
+            m.status = NodeStatus.ALIVE
+
+    # Update node status
+    def set_status(self, node_id: str, status: NodeStatus):
+        m = self.members.get(node_id)
+        if m:
+            m.status = status
