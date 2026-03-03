@@ -32,7 +32,7 @@ class Node:
         self.membership = MembershipTable(node_id)
         self.fd = FailureDetector(
             self.membership,
-            FDConfig(suspect_timeout=3.0, dead_timeout=6.0),
+            FDConfig(suspect_timeout=6.0, dead_timeout=12.0),
             )
         # pre-load known peers into membership (ALIVE, heartbeat=0)
         now = time.time()
@@ -41,7 +41,7 @@ class Node:
                 continue
             self.membership.members.setdefault(
                 pid,
-                MemberInfo(node_id=pid, heartbeat=0, status=NodeStatus.ALIVE, last_update=now),
+                MemberInfo(node_id=pid, heartbeat=0, incarnation=0, status=NodeStatus.ALIVE, last_seen=now),
             )
 
         self.net = UDPTransport(bind_host, bind_port)
@@ -51,6 +51,9 @@ class Node:
     async def start(self):
         logger.info(f"Node {self.node_id} starting")
         self._running = True
+
+        # revive self on startup (increment incarnation and mark alive)
+        self.membership.revive_self()
 
         await self.net.start(self.on_message)
 
@@ -86,15 +89,15 @@ class Node:
             return
         host, port = self.known_peers[peer_id]
 
-        # send a membership snapshot
+        # send a membership snapshot (no timestamps)
         payload = {
             "type": "GOSSIP",
             "from": self.node_id,
             "members": {
                 mid: {
                     "heartbeat": m.heartbeat,
+                    "incarnation": m.incarnation,
                     "status": m.status.value,
-                    "last_update": m.last_update,
                 }
                 for mid, m in self.membership.members.items()
             },
@@ -117,14 +120,27 @@ class Node:
         incoming = {}
         for mid, data in members.items():
             try:
+                # Do NOT trust remote timestamps for last_seen/last_update.
+                # We'll keep last_seen as a local-only timestamp (merge will refresh it).
                 incoming[mid] = MemberInfo(
                     node_id=mid,
                     heartbeat=int(data["heartbeat"]),
+                    incarnation=int(data.get("incarnation", 0)),
                     status=NodeStatus(data["status"]),
-                    last_update=float(data["last_update"]),
+                    last_seen=0.0,
                 )
             except Exception:
                 continue
+
+        # Self-defense: if someone gossips that I'm SUSPECT/DEAD with the same
+        # incarnation, I must refute by increasing my incarnation and marking ALIVE.
+        me = incoming.get(self.node_id)
+        if me and me.status in (NodeStatus.SUSPECT, NodeStatus.DEAD):
+            local_me = self.membership.members[self.node_id]
+            if me.incarnation == local_me.incarnation:
+                local_me.incarnation += 1
+                local_me.status = NodeStatus.ALIVE
+                logger.info(f"[{self.node_id}] Refuting {me.status.value}: increase incarnation -> {local_me.incarnation}")
 
         self.membership.merge(incoming)
 

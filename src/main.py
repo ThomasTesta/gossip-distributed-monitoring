@@ -12,6 +12,7 @@ logging.basicConfig(
 PEERS = {
     "node-1": ("127.0.0.1", 5001),
     "node-2": ("127.0.0.1", 5002),
+    "node-3": ("127.0.0.1", 5003),
 }
 
 
@@ -26,7 +27,7 @@ async def main():
         bind_port=port,
         peers={k: v for k, v in PEERS.items() if k != node_id},
         gossip_interval=1.0,
-        fanout=1,
+        fanout=2,
     )
     await node.start()
 

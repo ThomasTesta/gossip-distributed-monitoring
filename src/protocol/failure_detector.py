@@ -33,7 +33,7 @@ class FailureDetector:
             if info.status == NodeStatus.DEAD:
                 continue
 
-            elapsed = now - info.last_update
+            elapsed = now - info.last_seen
 
             # ALIVE -> SUSPECT
             if info.status == NodeStatus.ALIVE and elapsed >= self.cfg.suspect_timeout:
