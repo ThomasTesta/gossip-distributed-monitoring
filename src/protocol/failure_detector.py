@@ -1,7 +1,7 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import List
+from typing import List, Tuple
 
 from src.node.membership import MembershipTable, NodeStatus
 
@@ -19,13 +19,13 @@ class FailureDetector:
         self.membership = membership
         self.cfg = cfg
 
-    def tick(self) -> List[str]:
+    def tick(self) -> List[Tuple[str, NodeStatus, int]]:
         """
         Evaluate timeouts and update member states.
-        Returns list of node_ids whose status changed.
+        Returns a list of events as tuples: (node_id, new_status, incarnation).
         """
         now = time.time()
-        changed: List[str] = []
+        events: List[Tuple[str, NodeStatus, int]] = []
 
         for node_id, info in list(self.membership.members.items()):
             if node_id == self.membership.self_id:
@@ -38,13 +38,13 @@ class FailureDetector:
             # ALIVE -> SUSPECT
             if info.status == NodeStatus.ALIVE and elapsed >= self.cfg.suspect_timeout:
                 self.membership.set_status(node_id, NodeStatus.SUSPECT)
-                changed.append(node_id)
+                events.append((node_id, NodeStatus.SUSPECT, info.incarnation))
                 logger.info(f"[FD] {node_id} -> SUSPECT (elapsed={elapsed:.2f}s)")
 
             # SUSPECT -> DEAD
             if info.status == NodeStatus.SUSPECT and elapsed >= self.cfg.dead_timeout:
                 self.membership.set_status(node_id, NodeStatus.DEAD)
-                changed.append(node_id)
+                events.append((node_id, NodeStatus.DEAD, info.incarnation))
                 logger.info(f"[FD] {node_id} -> DEAD (elapsed={elapsed:.2f}s)")
 
-        return changed
+        return events

@@ -46,6 +46,12 @@ class Node:
 
         self.net = UDPTransport(bind_host, bind_port)
 
+        # pending local membership updates to disseminate (node_id -> dict with fields + 'ttl')
+        self.pending_updates: Dict[str, dict] = {}
+
+        # number of gossip rounds to retransmit each important update
+        self.gossip_repeat: int = 3  # retransmit each update for N gossip rounds
+
         self._running = False
 
     async def start(self):
@@ -101,6 +107,7 @@ class Node:
                 }
                 for mid, m in self.membership.members.items()
             },
+            "updates": self._collect_updates(),
         }
 
         self.net.send(payload, host, port)
@@ -114,6 +121,37 @@ class Node:
         sender_hb = msg.get("members", {}).get(sender, {}).get("heartbeat", 0)
         self.membership.mark_seen(sender, int(sender_hb))
         members = msg.get("members", {})
+        # Apply prioritized failure updates 
+        updates = msg.get("updates", {})
+        for nid, upd in updates.items():
+            try:
+                inc = int(upd.get("incarnation", 0))
+                st = NodeStatus(upd["status"])
+
+                current = self.membership.members.get(nid)
+                if current is None:
+                    # unknown node: create it 
+                    self.membership.members[nid] = MemberInfo(
+                        node_id=nid,
+                        heartbeat=0,
+                        incarnation=inc,
+                        status=st,
+                        last_seen=time.time(),
+                    )
+                else:
+                    # accept if newer incarnation, or same incarnation with "worse" status
+                    if inc > current.incarnation:
+                        current.incarnation = inc
+                        current.status = st
+                        current.last_seen = time.time()
+                    elif inc == current.incarnation:
+                        order = {NodeStatus.ALIVE: 0, NodeStatus.SUSPECT: 1, NodeStatus.DEAD: 2}
+                        if order[st] > order[current.status]:
+                            current.status = st
+                            current.last_seen = time.time()
+
+            except Exception:
+                continue
         logger.debug(f"[{self.node_id}] Received gossip from {sender} @ {addr}")
 
         # convert back to MemberInfo and merge
@@ -121,7 +159,7 @@ class Node:
         for mid, data in members.items():
             try:
                 # Do NOT trust remote timestamps for last_seen/last_update.
-                # We'll keep last_seen as a local-only timestamp (merge will refresh it).
+                # last_seen as a local-only timestamp (merge will refresh it).
                 incoming[mid] = MemberInfo(
                     node_id=mid,
                     heartbeat=int(data["heartbeat"]),
@@ -153,4 +191,30 @@ class Node:
     async def failure_detector_loop(self):
         while self._running:
             await asyncio.sleep(0.5)
-            self.fd.tick()
+
+            events = self.fd.tick()  # <-- tick() must return a list of events
+            for node_id, status, incarnation in events:
+                self.pending_updates[node_id] = {
+                    "status": status.value,
+                    "incarnation": int(incarnation),
+                    "ttl": self.gossip_repeat,
+                }
+
+    def _collect_updates(self) -> Dict[str, dict]:
+        out: Dict[str, dict] = {}
+        to_delete = []
+
+        for nid, upd in self.pending_updates.items():
+            out[nid] = {
+                "status": upd["status"],
+                "incarnation": upd["incarnation"],
+            }
+
+            upd["ttl"] -= 1
+            if upd["ttl"] <= 0:
+                to_delete.append(nid)
+
+        for nid in to_delete:
+            del self.pending_updates[nid]
+
+        return out
