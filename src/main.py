@@ -4,11 +4,10 @@ import os
 from src.node.node import Node
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
-# simple static config for now
 PEERS = {
     "node-1": ("127.0.0.1", 5001),
     "node-2": ("127.0.0.1", 5002),
@@ -20,7 +19,6 @@ async def main():
     node_id = os.environ.get("NODE_ID", "node-1")
     host, port = PEERS[node_id]
 
-    # each node knows the others
     node = Node(
         node_id=node_id,
         bind_host=host,
@@ -33,4 +31,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Stopped by user")

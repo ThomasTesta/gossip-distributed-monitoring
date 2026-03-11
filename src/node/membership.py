@@ -97,11 +97,10 @@ class MembershipTable:
             )
             return
 
-        m.last_seen = now
         if heartbeat > m.heartbeat:
             m.heartbeat = heartbeat
 
-        # always mark seen nodes as ALIVE when receive a valid message
+        m.last_seen = now
         m.status = NodeStatus.ALIVE
 
     # Update node status
@@ -116,3 +115,7 @@ class MembershipTable:
         me.incarnation += 1
         me.status = NodeStatus.ALIVE
         me.last_seen = time.time()
+
+    def is_dead(self, node_id: str) -> bool:
+        m = self.members.get(node_id)
+        return m is not None and m.status == NodeStatus.DEAD

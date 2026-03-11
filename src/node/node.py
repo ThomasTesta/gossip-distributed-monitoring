@@ -34,15 +34,6 @@ class Node:
             self.membership,
             FDConfig(suspect_timeout=6.0, dead_timeout=12.0),
             )
-        # pre-load known peers into membership (ALIVE, heartbeat=0)
-        now = time.time()
-        for pid in self.known_peers.keys():
-            if pid == self.node_id:
-                continue
-            self.membership.members.setdefault(
-                pid,
-                MemberInfo(node_id=pid, heartbeat=0, incarnation=0, status=NodeStatus.ALIVE, last_seen=now),
-            )
 
         self.net = UDPTransport(bind_host, bind_port)
 
@@ -52,40 +43,68 @@ class Node:
         # number of gossip rounds to retransmit each important update
         self.gossip_repeat: int = 3  # retransmit each update for N gossip rounds
 
+        # Metrics
+        self.metrics = {
+            "gossip_sent": 0,
+            "gossip_received": 0,
+            "suspect_events": 0,
+            "dead_events": 0,
+        }
+
         self._running = False
 
     async def start(self):
         logger.info(f"Node {self.node_id} starting")
         self._running = True
 
-        # revive self on startup (increment incarnation and mark alive)
         self.membership.revive_self()
-
         await self.net.start(self.on_message)
 
-        await asyncio.gather(
-            self.gossip_loop(),
-            self.receive_loop(),
-            self.failure_detector_loop(),
-        )
+        tasks = [
+            asyncio.create_task(self.gossip_loop(), name=f"{self.node_id}-gossip"),
+            asyncio.create_task(self.receive_loop(), name=f"{self.node_id}-receive"),
+            asyncio.create_task(self.failure_detector_loop(), name=f"{self.node_id}-fd"),
+            asyncio.create_task(self.metrics_loop(), name=f"{self.node_id}-metrics"),
+        ]
+
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            logger.info(f"Node {self.node_id} cancelled")
+            raise
+        finally:
+            await self.stop()
 
     async def stop(self):
+        if not self._running:
+            return
+
+        logger.info(f"Node {self.node_id} stopping")
         self._running = False
+
+        if hasattr(self.net, "close"):
+            result = self.net.close()
+            if asyncio.iscoroutine(result):
+                await result
+
+        logger.info(f"Node {self.node_id} stopped")
 
     async def gossip_loop(self):
         while self._running:
             await asyncio.sleep(self.gossip_interval)
             self.membership.increment_heartbeat()
 
-            peers = self.membership.get_alive_peers()
-            logger.debug(f"[{self.node_id}] Gossip tick — peers={len(peers)}")
+            candidate_peers = [
+                pid for pid in self.known_peers.keys()
+                if not self.membership.is_dead(pid)
+            ]
+            logger.debug(f"[{self.node_id}] Gossip tick — peers={len(candidate_peers)}")
 
-            if not peers:
+            if not candidate_peers:
                 continue
 
-            # choose up to fanout peers
-            k = min(self.fanout, len(peers))
-            targets = random.sample(peers, k=k)
+            k = min(self.fanout, len(candidate_peers))
+            targets = random.sample(candidate_peers, k=k)
 
             for target_id in targets:
                 await self.send_gossip(target_id)
@@ -110,6 +129,7 @@ class Node:
             "updates": self._collect_updates(),
         }
 
+        self.metrics["gossip_sent"] += 1    
         self.net.send(payload, host, port)
         logger.debug(f"[{self.node_id}] Sent gossip to {peer_id} ({host}:{port})")
 
@@ -153,6 +173,7 @@ class Node:
             except Exception:
                 continue
         logger.debug(f"[{self.node_id}] Received gossip from {sender} @ {addr}")
+        self.metrics["gossip_received"] += 1 #count received gossip messages
 
         # convert back to MemberInfo and merge
         incoming = {}
@@ -194,11 +215,37 @@ class Node:
 
             events = self.fd.tick()  # <-- tick() must return a list of events
             for node_id, status, incarnation in events:
+                if status == NodeStatus.SUSPECT:
+                    self.metrics["suspect_events"] += 1
+                if status == NodeStatus.DEAD:
+                    self.metrics["dead_events"] += 1
+                    
                 self.pending_updates[node_id] = {
                     "status": status.value,
                     "incarnation": int(incarnation),
                     "ttl": self.gossip_repeat,
                 }
+    
+    async def metrics_loop(self):
+        while self._running:
+            await asyncio.sleep(5)
+
+            logger.info(
+                f"[METRICS] node={self.node_id} "
+                f"sent={self.metrics['gossip_sent']} "
+                f"recv={self.metrics['gossip_received']} "
+                f"suspect={self.metrics['suspect_events']} "
+                f"dead={self.metrics['dead_events']}"
+            )
+
+            logger.info("[MEMBERSHIP]")
+            for m in self.membership.members.values():
+                logger.info(
+                    f"  {m.node_id} "
+                    f"hb={m.heartbeat} "
+                    f"inc={m.incarnation} "
+                    f"status={m.status.value}"
+                )
 
     def _collect_updates(self) -> Dict[str, dict]:
         out: Dict[str, dict] = {}
