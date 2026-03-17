@@ -17,6 +17,9 @@ services:
       NET_DELAY_MIN_MS: 0
       NET_DELAY_MAX_MS: 0
 
+      #Gossip Arena test 1
+      STARTUP_RUMOR: rumor-001
+
     networks:
       - gossip-net
 
