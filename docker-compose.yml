@@ -9,7 +9,7 @@ services:
       BIND_PORT: 5001
       PEERS: node-1@node-1:5001,node-2@node-2:5002,node-3@node-3:5003,node-4@node-4:5004,node-5@node-5:5005
       GOSSIP_INTERVAL: 1.0
-      FANOUT: 2
+      FANOUT: 3
       LOG_LEVEL: INFO
 
       # Fault Injection
@@ -18,7 +18,7 @@ services:
       NET_DELAY_MAX_MS: 0
 
       #Gossip Arena test 1
-      STARTUP_RUMOR: rumor-001
+      STARTUP_RUMORS: rumor-001,rumor-002,rumor-003
 
     networks:
       - gossip-net
@@ -33,7 +33,7 @@ services:
       BIND_PORT: 5002
       PEERS: node-1@node-1:5001,node-2@node-2:5002,node-3@node-3:5003,node-4@node-4:5004,node-5@node-5:5005
       GOSSIP_INTERVAL: 1.0
-      FANOUT: 2
+      FANOUT: 3
       LOG_LEVEL: INFO
 
       NET_DROP_RATE: 0.0
@@ -53,7 +53,7 @@ services:
       BIND_PORT: 5003
       PEERS: node-1@node-1:5001,node-2@node-2:5002,node-3@node-3:5003,node-4@node-4:5004,node-5@node-5:5005
       GOSSIP_INTERVAL: 1.0
-      FANOUT: 2
+      FANOUT: 3
       LOG_LEVEL: INFO
 
       NET_DROP_RATE: 0.0
@@ -73,7 +73,7 @@ services:
       BIND_PORT: 5004
       PEERS: node-1@node-1:5001,node-2@node-2:5002,node-3@node-3:5003,node-4@node-4:5004,node-5@node-5:5005
       GOSSIP_INTERVAL: 1.0
-      FANOUT: 2
+      FANOUT: 3
       LOG_LEVEL: INFO
 
       NET_DROP_RATE: 0.0
@@ -93,7 +93,7 @@ services:
       BIND_PORT: 5005
       PEERS: node-1@node-1:5001,node-2@node-2:5002,node-3@node-3:5003,node-4@node-4:5004,node-5@node-5:5005
       GOSSIP_INTERVAL: 1.0
-      FANOUT: 2
+      FANOUT: 3
       LOG_LEVEL: INFO
 
       NET_DROP_RATE: 0.0

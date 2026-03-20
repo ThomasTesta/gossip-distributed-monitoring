@@ -3,7 +3,7 @@ import logging
 import random
 import time
 import os
-from typing import Dict, Tuple, Set
+from typing import Dict, Tuple
 
 from src.node.membership import MembershipTable, MemberInfo, NodeStatus
 from src.network.udp import UDPTransport
@@ -57,23 +57,35 @@ class Node:
         self.pending_updates: Dict[str, dict] = {}
         self.gossip_repeat: int = 3
 
-        # Gossip Arena: rumor storage
-        self.rumors: Set[str] = set()
+        # Gossip Arena: structured rumors
+        # rumor_id -> {"rumor_id", "origin", "created_at", "hop_count"}
+        self.rumors: Dict[str, dict] = {}
         self.rumor_repeat: int = 5
         self.pending_rumors: Dict[str, int] = {}
 
-        # Optional startup rumor
-        startup_rumor = os.environ.get("STARTUP_RUMOR", "").strip()
-        if startup_rumor:
-            self.rumors.add(startup_rumor)
-            self.pending_rumors[startup_rumor] = self.rumor_repeat
+        startup_rumors_raw = os.environ.get("STARTUP_RUMORS", "").strip()
+        startup_rumors = [
+            r.strip()
+            for r in startup_rumors_raw.split(",")
+            if r.strip()
+        ]
+
+        for rumor_id in startup_rumors:
+            rumor = {
+                "rumor_id": rumor_id,
+                "origin": self.node_id,
+                "created_at": time.time(),
+                "hop_count": 0,
+            }
+            self.rumors[rumor_id] = rumor
+            self.pending_rumors[rumor_id] = self.rumor_repeat
 
         self.metrics = {
             "gossip_sent": 0,
             "gossip_received": 0,
             "suspect_events": 0,
             "dead_events": 0,
-            "rumors_generated": 1 if startup_rumor else 0,
+            "rumors_generated": len(startup_rumors),
             "rumors_received": 0,
             "rumors_forwarded": 0,
         }
@@ -85,7 +97,6 @@ class Node:
         self._running = True
 
         self.membership.revive_self()
-
         await self.net.start(self.on_message)
 
         await asyncio.gather(
@@ -118,7 +129,6 @@ class Node:
             return
 
         host, port = self.known_peers[peer_id]
-
         rumors_to_send = self._collect_rumors()
 
         payload = {
@@ -212,14 +222,31 @@ class Node:
 
         self.membership.merge(incoming)
 
-        # Gossip Arena: rumor reception
+        # Structured rumor reception
         incoming_rumors = msg.get("rumors", [])
-        for rumor_id in incoming_rumors:
-            if rumor_id not in self.rumors:
-                self.rumors.add(rumor_id)
-                self.pending_rumors[rumor_id] = self.rumor_repeat
-                self.metrics["rumors_received"] += 1
-                logger.info(f"[RUMOR] node={self.node_id} learned={rumor_id} from={sender}")
+        for rumor in incoming_rumors:
+            try:
+                rumor_id = rumor["rumor_id"]
+                if rumor_id not in self.rumors:
+                    stored = {
+                        "rumor_id": rumor_id,
+                        "origin": rumor.get("origin", sender),
+                        "created_at": float(rumor.get("created_at", time.time())),
+                        "hop_count": int(rumor.get("hop_count", 0)),
+                    }
+                    self.rumors[rumor_id] = stored
+                    self.pending_rumors[rumor_id] = self.rumor_repeat
+                    self.metrics["rumors_received"] += 1
+
+                    logger.info(
+                        f"[RUMOR] node={self.node_id} "
+                        f"learned={rumor_id} "
+                        f"origin={stored['origin']} "
+                        f"hop_count={stored['hop_count']} "
+                        f"from={sender}"
+                    )
+            except Exception:
+                continue
 
     async def receive_loop(self):
         while self._running:
@@ -266,7 +293,11 @@ class Node:
                     f"status={m.status.value}"
                 )
 
-            logger.info(f"[RUMORS] node={self.node_id} rumors={sorted(self.rumors)}")
+            rumor_summary = [
+                f"{rid}(origin={r['origin']},hop={r['hop_count']})"
+                for rid, r in sorted(self.rumors.items())
+            ]
+            logger.info(f"[RUMORS] node={self.node_id} rumors={rumor_summary}")
 
     def _collect_updates(self) -> Dict[str, dict]:
         out: Dict[str, dict] = {}
@@ -292,7 +323,17 @@ class Node:
         to_delete = []
 
         for rumor_id, ttl in self.pending_rumors.items():
-            rumors_out.append(rumor_id)
+            rumor = self.rumors[rumor_id]
+
+            rumors_out.append(
+                {
+                    "rumor_id": rumor["rumor_id"],
+                    "origin": rumor["origin"],
+                    "created_at": rumor["created_at"],
+                    "hop_count": rumor["hop_count"] + 1,
+                }
+            )
+
             self.pending_rumors[rumor_id] -= 1
             if self.pending_rumors[rumor_id] <= 0:
                 to_delete.append(rumor_id)
