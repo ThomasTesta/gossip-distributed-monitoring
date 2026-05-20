@@ -6,11 +6,7 @@ __pycache__
 .venv
 venv
 env
-.git
-.gitignore
 .pytest_cache
 .mypy_cache
 .DS_Store
-docs/
-tests/
-docker/
+

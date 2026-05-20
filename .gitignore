@@ -205,3 +205,17 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Project runtime artifacts
+*.log
+logs/
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Generated experiment outputs
+results/
+figures/generated/
