@@ -3,6 +3,9 @@ import logging
 import random
 import time
 import os
+import uvicorn
+
+from src.dashboard.api import create_app
 from typing import Dict, Tuple
 
 from src.node.membership import MembershipTable, MemberInfo, NodeStatus
@@ -90,6 +93,9 @@ class Node:
             "rumors_forwarded": 0,
         }
 
+        self.api_host = os.environ.get("API_HOST", "0.0.0.0")
+        self.api_port = int(os.environ.get("API_PORT", "8000"))
+
         self._running = False
 
     async def start(self):
@@ -104,6 +110,7 @@ class Node:
             self.receive_loop(),
             self.failure_detector_loop(),
             self.metrics_loop(),
+            self.api_loop(),
         )
 
     async def stop(self):
@@ -342,3 +349,16 @@ class Node:
             del self.pending_rumors[rumor_id]
 
         return rumors_out
+
+    async def api_loop(self):
+        app = create_app(self)
+
+        config = uvicorn.Config(
+            app,
+            host=self.api_host,
+            port=self.api_port,
+            log_level="warning",
+        )
+
+        server = uvicorn.Server(config)
+        await server.serve()

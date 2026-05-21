@@ -7,6 +7,7 @@ services:
       NODE_ID: node-1
       BIND_HOST: 0.0.0.0
       BIND_PORT: 5001
+      API_PORT: 8001
       PEERS: node-1@node-1:5001,node-2@node-2:5002,node-3@node-3:5003,node-4@node-4:5004,node-5@node-5:5005
       GOSSIP_INTERVAL: 1.0
       FANOUT: 3
@@ -20,6 +21,9 @@ services:
       #Gossip Arena test 1
       STARTUP_RUMORS: rumor-001,rumor-002,rumor-003
 
+    ports:
+      - "5001:5001/udp"
+      - "8001:8001"
     networks:
       - gossip-net
 
@@ -31,6 +35,7 @@ services:
       NODE_ID: node-2
       BIND_HOST: 0.0.0.0
       BIND_PORT: 5002
+      API_PORT: 8002
       PEERS: node-1@node-1:5001,node-2@node-2:5002,node-3@node-3:5003,node-4@node-4:5004,node-5@node-5:5005
       GOSSIP_INTERVAL: 1.0
       FANOUT: 3
@@ -40,6 +45,9 @@ services:
       NET_DELAY_MIN_MS: 0
       NET_DELAY_MAX_MS: 0
 
+    ports:
+      - "5002:5002/udp"
+      - "8002:8002"
     networks:
       - gossip-net
 
@@ -51,6 +59,7 @@ services:
       NODE_ID: node-3
       BIND_HOST: 0.0.0.0
       BIND_PORT: 5003
+      API_PORT: 8003
       PEERS: node-1@node-1:5001,node-2@node-2:5002,node-3@node-3:5003,node-4@node-4:5004,node-5@node-5:5005
       GOSSIP_INTERVAL: 1.0
       FANOUT: 3
@@ -60,6 +69,9 @@ services:
       NET_DELAY_MIN_MS: 0
       NET_DELAY_MAX_MS: 0
 
+    ports:
+      - "5003:5003/udp"
+      - "8003:8003"
     networks:
       - gossip-net
 

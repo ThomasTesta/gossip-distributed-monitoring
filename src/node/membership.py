@@ -60,9 +60,13 @@ class MembershipTable:
             loc = self.members.get(node_id)
             
             if loc is None:
-                # store incoming info but refresh last_seen to local time
-                inc.last_seen = time.time()
-                self.members[node_id] = inc
+                self.members[node_id] = MemberInfo(
+                    node_id=inc.node_id,
+                    heartbeat=inc.heartbeat,
+                    incarnation=inc.incarnation,
+                    status=inc.status,
+                    last_seen=time.time(),
+                )
                 continue
             newer = False
             
