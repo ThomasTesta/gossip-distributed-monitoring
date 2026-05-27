@@ -213,6 +213,11 @@ Distributed Systems Project — University of Bologna, Cesena's Campus
 
 ---
 
+Experimental Branches
+The main branch contains the stable implementation used for the final report and experimental validation.
+An additional experimental branch (feature/push-pull-gossip) extends the system with push-pull epidemic dissemination and bidirectional anti-entropy synchronization mechanisms for further experimentation and research-oriented evaluation.
+
+
 ## REST API
 
 Quando il nodo espone l'API integrata (FastAPI + Uvicorn), sono disponibili i seguenti endpoint utili per monitorare e interagire con il nodo:
