@@ -24,6 +24,7 @@ class Node:
         peers: Dict[str, Tuple[str, int]],
         gossip_interval: float = 1.0,
         fanout: int = 1,
+        gossip_mode: str = "push",
     ):
         self.node_id = node_id
         self.bind_host = bind_host
@@ -32,6 +33,9 @@ class Node:
 
         self.gossip_interval = gossip_interval
         self.fanout = fanout
+
+        self.gossip_mode = gossip_mode.lower()
+        logger.info(f"[GOSSIP] mode={self.gossip_mode}")
 
         self.membership = MembershipTable(node_id)
         self.fd = FailureDetector(
@@ -129,13 +133,39 @@ class Node:
             targets = random.sample(peers, k=k)
 
             for target_id in targets:
-                await self.send_gossip(target_id)
+                if self.gossip_mode == "push":
+                    await self.send_gossip(target_id)
+                elif self.gossip_mode == "push-pull":
+                    await self.send_gossip(target_id)
+                    await self.send_pull_request(target_id)
 
     async def send_gossip(self, peer_id: str):
         if peer_id not in self.known_peers:
             return
 
         host, port = self.known_peers[peer_id]
+        payload = self.build_gossip_payload()
+
+        self.metrics["gossip_sent"] += 1
+        if payload.get("rumors"):
+            self.metrics["rumors_forwarded"] += len(payload["rumors"])
+
+        self.net.send(payload, host, port)
+
+    async def send_pull_request(self, peer_id: str):
+        if peer_id not in self.known_peers:
+            return
+
+        host, port = self.known_peers[peer_id]
+
+        payload = {
+            "type": "PULL_REQUEST",
+            "from": self.node_id,
+        }
+
+        self.net.send(payload, host, port)
+
+    def build_gossip_payload(self) -> Dict:
         rumors_to_send = self._collect_rumors()
 
         payload = {
@@ -153,16 +183,20 @@ class Node:
             "rumors": rumors_to_send,
         }
 
-        self.metrics["gossip_sent"] += 1
-        if rumors_to_send:
-            self.metrics["rumors_forwarded"] += len(rumors_to_send)
-
-        self.net.send(payload, host, port)
+        return payload
 
     def on_message(self, msg: Dict, addr):
-        if msg.get("type") != "GOSSIP":
-            return
+        msg_type = msg.get("type")
 
+        if msg_type == "GOSSIP":
+            self.handle_gossip(msg, addr)
+        elif msg_type == "PULL_REQUEST":
+            self.handle_pull_request(msg, addr)
+        elif msg_type == "PULL_RESPONSE":
+            # Pull response contains gossip-like payload
+            self.handle_gossip(msg, addr)
+
+    def handle_gossip(self, msg: Dict, addr):
         sender = msg.get("from", "?")
         sender_hb = msg.get("members", {}).get(sender, {}).get("heartbeat", 0)
         self.membership.mark_seen(sender, int(sender_hb))
@@ -254,6 +288,19 @@ class Node:
                     )
             except Exception:
                 continue
+
+    def handle_pull_request(self, msg: Dict, addr):
+        sender = msg.get("from")
+
+        if sender not in self.known_peers:
+            return
+
+        host, port = self.known_peers[sender]
+
+        payload = self.build_gossip_payload()
+        payload["type"] = "PULL_RESPONSE"
+
+        self.net.send(payload, host, port)
 
     async def receive_loop(self):
         while self._running:

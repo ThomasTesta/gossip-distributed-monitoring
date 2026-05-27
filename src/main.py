@@ -98,6 +98,7 @@ async def main() -> None:
 
     gossip_interval = get_env_float("GOSSIP_INTERVAL", 1.0)
     fanout = get_env_int("FANOUT", 2)
+    gossip_mode = get_env("GOSSIP_MODE", default="push")
 
     all_peers = parse_peers(peers_raw)
 
@@ -137,6 +138,7 @@ async def main() -> None:
         peers=known_peers,
         gossip_interval=gossip_interval,
         fanout=fanout,
+        gossip_mode=gossip_mode,
     )
 
     await node.start()

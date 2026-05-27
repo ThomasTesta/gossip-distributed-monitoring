@@ -12,6 +12,7 @@ services:
       GOSSIP_INTERVAL: 1.0
       FANOUT: 3
       LOG_LEVEL: INFO
+      GOSSIP_MODE: push-pull
 
       # Fault Injection
       NET_DROP_RATE: 0.0
@@ -40,6 +41,7 @@ services:
       GOSSIP_INTERVAL: 1.0
       FANOUT: 3
       LOG_LEVEL: INFO
+      GOSSIP_MODE: push-pull
 
       NET_DROP_RATE: 0.0
       NET_DELAY_MIN_MS: 0
@@ -64,6 +66,7 @@ services:
       GOSSIP_INTERVAL: 1.0
       FANOUT: 3
       LOG_LEVEL: INFO
+      GOSSIP_MODE: push-pull
 
       NET_DROP_RATE: 0.0
       NET_DELAY_MIN_MS: 0
@@ -87,6 +90,7 @@ services:
       GOSSIP_INTERVAL: 1.0
       FANOUT: 3
       LOG_LEVEL: INFO
+      GOSSIP_MODE: push-pull
 
       NET_DROP_RATE: 0.0
       NET_DELAY_MIN_MS: 0
@@ -107,6 +111,7 @@ services:
       GOSSIP_INTERVAL: 1.0
       FANOUT: 3
       LOG_LEVEL: INFO
+      GOSSIP_MODE: push-pull
 
       NET_DROP_RATE: 0.0
       NET_DELAY_MIN_MS: 0
